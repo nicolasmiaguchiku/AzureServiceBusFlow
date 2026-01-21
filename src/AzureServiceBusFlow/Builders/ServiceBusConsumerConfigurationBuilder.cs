@@ -106,13 +106,14 @@ namespace AzureServiceBusFlow.Builders
                 var globalConsumerMiddlewares = sp.GetServices<IConsumerMiddleware>() ?? [];
 
                 var consumerMiddlewares = globalConsumerMiddlewares.Union(localConsumerMiddlewares);
+                var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
 
                 if (!string.IsNullOrWhiteSpace(_queueName))
                 {
                     return new ServiceBusConsumerHostedService(
                         (rawMessage, rootProvider, cancellationToken) =>
                             MessageConsumingHandler(rawMessage, rootProvider, consumerMiddlewares, logger, cancellationToken),
-                        sp,
+                        scopeFactory,
                         logger,
                         _azureServiceBusConfiguration,
                         _queueName!);
@@ -121,7 +122,7 @@ namespace AzureServiceBusFlow.Builders
                 return new ServiceBusConsumerHostedService(
                     (rawMessage, rootProvider, cancellationToken) =>
                         MessageConsumingHandler(rawMessage, rootProvider, consumerMiddlewares, logger, cancellationToken),
-                    sp,
+                    scopeFactory,
                     logger,
                     _azureServiceBusConfiguration,
                     _topicName!,
