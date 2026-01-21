@@ -1,5 +1,6 @@
 ﻿using Azure.Messaging.ServiceBus;
 using AzureServiceBusFlow.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Polly;
@@ -9,7 +10,7 @@ namespace AzureServiceBusFlow.Hosts;
 
 public class ServiceBusConsumerHostedService(
     Func<ServiceBusReceivedMessage, IServiceProvider, CancellationToken, Task> messageHandler,
-    IServiceProvider serviceProvider,
+    IServiceScopeFactory scopeFactory,
     ILogger logger,
     AzureServiceBusConfiguration azureServiceBusConfiguration,
     string queueOrTopicName,
@@ -50,6 +51,9 @@ public class ServiceBusConsumerHostedService(
 
     private async Task ProcessMessageHandler(ProcessMessageEventArgs args)
     {
+        using var scope = scopeFactory.CreateScope();
+        var scopedProvider = scope.ServiceProvider;
+
         var message = args.Message;
 
         try
@@ -58,13 +62,13 @@ public class ServiceBusConsumerHostedService(
             {
                 await _retryPolicy.ExecuteAsync(async _ =>
                 {
-                    await messageHandler(message, serviceProvider, args.CancellationToken);
+                    await messageHandler(message, scopedProvider, args.CancellationToken);
                 }, CancellationToken.None);
             }
 
             if (_processor.ReceiveMode == ServiceBusReceiveMode.PeekLock)
             {
-                await messageHandler(message, serviceProvider, args.CancellationToken);
+                await messageHandler(message, scopedProvider, args.CancellationToken);
                 await args.CompleteMessageAsync(message, args.CancellationToken);
             }
         }
@@ -72,8 +76,8 @@ public class ServiceBusConsumerHostedService(
         {
             logger.LogError(ex, "Error while trying process MessageType {MessageType} with CorrelationId {CorrelationId} with id {MessageId} - MessageBody {Body}",
                 message.GetType().Name,
-                message.CorrelationId, 
-                message.MessageId, 
+                message.CorrelationId,
+                message.MessageId,
                 message.Body);
 
             if (_processor.ReceiveMode == ServiceBusReceiveMode.PeekLock)
@@ -112,8 +116,8 @@ public class ServiceBusConsumerHostedService(
             await _processor.DisposeAsync();
         }
 
-        await _client.DisposeAsync();
+            await _client.DisposeAsync();
 
-        GC.SuppressFinalize(this);
+            GC.SuppressFinalize(this);
+        }
     }
-}
